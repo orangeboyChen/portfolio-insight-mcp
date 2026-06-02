@@ -38,7 +38,7 @@ func (c *Client) authenticate(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("check auth status: %w", err)
 	}
-	defer statusResp.Body.Close()
+	defer func() { _ = statusResp.Body.Close() }()
 
 	var status struct {
 		RequiresPassword bool `json:"requiresPassword"`
@@ -61,7 +61,7 @@ func (c *Client) authenticate(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("login: %w", err)
 	}
-	defer loginResp.Body.Close()
+	defer func() { _ = loginResp.Body.Close() }()
 
 	if loginResp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(loginResp.Body)
@@ -125,7 +125,7 @@ func (c *Client) doAuthenticatedRequest(ctx context.Context, method, path string
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	// Retry on 401
 	if resp.StatusCode == http.StatusUnauthorized {
@@ -140,7 +140,7 @@ func (c *Client) doAuthenticatedRequest(ctx context.Context, method, path string
 		if err != nil {
 			return nil, err
 		}
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 	}
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
