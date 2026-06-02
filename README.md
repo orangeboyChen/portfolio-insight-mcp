@@ -69,13 +69,39 @@ The project follows **Domain-Driven Design (DDD)** with a clean layered structur
 
 | Tool | Description |
 |------|-------------|
-| `get_daily_gain_loss` | Returns yesterday's (most recent trading day) total portfolio P&L with per-account breakdown |
-| `get_weekly_gain_loss` | Returns this week's P&L with per-holding detail (symbol, name, day change, total gain) |
-| `get_holdings_detail` | Returns full position details for every holding — sufficient for agents to search news by symbol and send Telegram alerts |
+| `refresh_portfolio` | Trigger market quote sync + portfolio recalculation; must call before querying stale data |
+| `get_daily_gain_loss` | Yesterday's P&L: total amount, %, total value, per-account breakdown |
+| `get_portfolio_overview` | Portfolio snapshot: total market value, cost basis, gain/loss, day/week/month change |
+| `get_asset_allocation` | Allocation by asset class with market value, gain/loss, weight |
+| `get_holdings_detail` | Full per-holding details across all accounts (with 7-day/30-day price change %) |
+| `get_recent_activities` | Recent transactions (buy/sell/dividend/deposit/withdrawal) sorted by date desc, with optional `limit` param |
 
 ### Response Fields
 
-Each holding detail includes: `accountName`, `symbol`, `name`, `assetClass`, `currency`, `quantity`, `price`, `marketValue`, `costBasis`, `dayChange`, `dayChangePct`, `totalGain`, `totalGainPct`, `weight`, `asOfDate`.
+**Holdings Detail** includes: `accountName`, `symbol`, `name`, `assetClass`, `currency`, `quantity`, `price`, `marketValue`, `costBasis`, `dayChange`, `dayChangePct`, `weekChangePct`, `monthChangePct`, `totalGain`, `totalGainPct`, `weight`, `asOfDate`.
+
+**Activity** includes: `id`, `accountName`, `date`, `activityType`, `symbol`, `symbolName`, `quantity`, `unitPrice`, `amount`, `fee`, `currency`.
+
+## Wealthfolio API Endpoints Used
+
+This server consumes the following Wealthfolio REST API endpoints:
+
+| Method | Endpoint | Purpose |
+|--------|----------|---------|
+| GET | `/api/v1/auth/status` | Check if authentication is required |
+| POST | `/api/v1/auth/login` | Login and obtain session token |
+| GET | `/api/v1/accounts?includeArchived=false` | List active accounts |
+| POST | `/api/v1/holdings/query` | Query holdings (all or by account) |
+| POST | `/api/v1/performance/accounts/simple` | Get daily performance per account |
+| POST | `/api/v1/performance/history` | Get period performance metrics |
+| GET | `/api/v1/market-data/quotes/history?symbol=` | Get historical price quotes |
+| POST | `/api/v1/portfolio/update` | Trigger portfolio refresh (async) |
+| GET | `/api/v1/events/stream` | SSE stream for async task completion events |
+| POST | `/api/v1/activities/search` | Search activities with pagination & filters |
+
+## Agent Prompt
+
+An English-language agent prompt file is available at [`PROMPT.md`](./PROMPT.md). It provides AI agents with complete instructions on how to use the MCP tools, the recommended workflow, message format examples, and guidelines for portfolio analysis and Telegram reporting.
 
 ## Prerequisites
 

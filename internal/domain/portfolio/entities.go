@@ -1,9 +1,11 @@
 package portfolio
 
+import "encoding/json"
+
 // MoneyAmount represents a monetary value in both local and base currencies.
 type MoneyAmount struct {
-	Local string `json:"local"`
-	Base  string `json:"base"`
+	Local json.Number `json:"local"`
+	Base  json.Number `json:"base"`
 }
 
 // Instrument represents a financial instrument (stock, ETF, fund, etc.).
@@ -21,18 +23,18 @@ type Holding struct {
 	AccountID         string      `json:"accountId"`
 	HoldingType       string      `json:"holdingType"`
 	Instrument        Instrument  `json:"instrument"`
-	Quantity          string      `json:"quantity"`
-	Price             string      `json:"price"`
+	Quantity          json.Number `json:"quantity"`
+	Price             json.Number `json:"price"`
 	MarketValue       MoneyAmount `json:"marketValue"`
 	CostBasis         MoneyAmount `json:"costBasis"`
 	DayChange         MoneyAmount `json:"dayChange"`
-	DayChangePct      string      `json:"dayChangePct"`
+	DayChangePct      json.Number `json:"dayChangePct"`
 	PrevCloseValue    MoneyAmount `json:"prevCloseValue"`
 	UnrealizedGain    MoneyAmount `json:"unrealizedGain"`
-	UnrealizedGainPct string      `json:"unrealizedGainPct"`
+	UnrealizedGainPct json.Number `json:"unrealizedGainPct"`
 	TotalGain         MoneyAmount `json:"totalGain"`
-	TotalGainPct      string      `json:"totalGainPct"`
-	Weight            string      `json:"weight"`
+	TotalGainPct      json.Number `json:"totalGainPct"`
+	Weight            json.Number `json:"weight"`
 	AsOfDate          string      `json:"asOfDate"`
 	SourceAccountIDs  []string    `json:"sourceAccountIds"`
 }
@@ -50,41 +52,96 @@ type Account struct {
 }
 
 // AccountPerformance represents account-level daily performance summary.
+// Numeric fields use json.Number to handle both string and number JSON values.
 type AccountPerformance struct {
-	AccountID                string `json:"accountId"`
-	AccountCurrency          string `json:"accountCurrency"`
-	BaseCurrency             string `json:"baseCurrency"`
-	TotalValue               string `json:"totalValue"`
-	TotalGainLossAmount      string `json:"totalGainLossAmount"`
-	CumulativeReturnPercent  string `json:"cumulativeReturnPercent"`
-	DayGainLossAmount        string `json:"dayGainLossAmount"`
-	DayReturnPercentModDietz string `json:"dayReturnPercentModDietz"`
-	PortfolioWeight          string `json:"portfolioWeight"`
+	AccountID                string      `json:"accountId"`
+	AccountName              string      `json:"accountName"`
+	AccountCurrency          string      `json:"accountCurrency"`
+	BaseCurrency             string      `json:"baseCurrency"`
+	TotalValue               json.Number `json:"totalValue"`
+	TotalGainLossAmount      json.Number `json:"totalGainLossAmount"`
+	CumulativeReturnPercent  json.Number `json:"cumulativeReturnPercent"`
+	DayGainLossAmount        json.Number `json:"dayGainLossAmount"`
+	DayReturnPercentModDietz json.Number `json:"dayReturnPercentModDietz"`
+	PortfolioWeight          json.Number `json:"portfolioWeight"`
 }
 
 // PortfolioSummary aggregates the total daily gain/loss across all accounts.
 type PortfolioSummary struct {
-	TotalDayGainLoss string               `json:"totalDayGainLoss"`
-	Currency         string               `json:"currency"`
-	Accounts         []AccountPerformance `json:"accounts"`
+	TotalDayGainLoss    string               `json:"totalDayGainLoss"`
+	TotalDayGainLossPct string               `json:"totalDayGainLossPct"`
+	TotalValue          string               `json:"totalValue"`
+	Currency            string               `json:"currency"`
+	Accounts            []AccountPerformance `json:"accounts"`
+}
+
+// PerformanceHistory represents historical performance metrics for a given period.
+type PerformanceHistory struct {
+	ID              string      `json:"id"`
+	Currency        string      `json:"currency"`
+	PeriodGain      json.Number `json:"periodGain"`
+	PeriodReturn    json.Number `json:"periodReturn"`
+	CumulativeTWR   json.Number `json:"cumulativeTwr"`
+	AnnualizedTWR   json.Number `json:"annualizedTwr"`
+	Volatility      json.Number `json:"volatility"`
+	MaxDrawdown     json.Number `json:"maxDrawdown"`
+	PeriodStartDate string      `json:"periodStartDate"`
+	PeriodEndDate   string      `json:"periodEndDate"`
+}
+
+// QuoteRecord represents a single historical price quote.
+type QuoteRecord struct {
+	ID        string      `json:"id"`
+	AssetID   string      `json:"assetId"`
+	Timestamp string      `json:"timestamp"`
+	Close     json.Number `json:"close"`
+	AdjClose  json.Number `json:"adjclose"`
+}
+
+// Activity represents a single investment activity (buy, sell, dividend, etc.).
+type Activity struct {
+	ID              string      `json:"id"`
+	AccountID       string      `json:"accountId"`
+	AccountName     string      `json:"accountName"`
+	AccountCurrency string      `json:"accountCurrency"`
+	AssetID         string      `json:"assetId"`
+	ActivityType    string      `json:"activityType"`
+	Date            string      `json:"date"`
+	Quantity        json.Number `json:"quantity"`
+	UnitPrice       json.Number `json:"unitPrice"`
+	Amount          json.Number `json:"amount"`
+	Fee             json.Number `json:"fee"`
+	Currency        string      `json:"currency"`
+	Symbol          string      `json:"symbol"`
+	SymbolName      string      `json:"symbolName"`
+	InstrumentType  string      `json:"instrumentType,omitempty"`
+	Comment         string      `json:"comment,omitempty"`
+}
+
+// ActivitySearchResult holds paginated activity search results.
+type ActivitySearchResult struct {
+	Activities []Activity `json:"activities"`
+	TotalCount int        `json:"totalCount"`
 }
 
 // HoldingDetail is an enriched holding record exposed via MCP,
 // designed to provide sufficient context for downstream agents.
 type HoldingDetail struct {
-	AccountName  string `json:"accountName"`
-	Symbol       string `json:"symbol"`
-	Name         string `json:"name"`
-	AssetClass   string `json:"assetClass"`
-	Currency     string `json:"currency"`
-	Quantity     string `json:"quantity"`
-	Price        string `json:"price"`
-	MarketValue  string `json:"marketValue"`
-	CostBasis    string `json:"costBasis"`
-	DayChange    string `json:"dayChange"`
-	DayChangePct string `json:"dayChangePct"`
-	TotalGain    string `json:"totalGain"`
-	TotalGainPct string `json:"totalGainPct"`
-	Weight       string `json:"weight"`
-	AsOfDate     string `json:"asOfDate"`
+	AccountName    string `json:"accountName"`
+	Symbol         string `json:"symbol"`
+	Name           string `json:"name"`
+	AssetClass     string `json:"assetClass"`
+	Currency       string `json:"currency"`
+	Quantity       string `json:"quantity"`
+	Price          string `json:"price"`
+	MarketValue    string `json:"marketValue"`
+	CostBasis      string `json:"costBasis"`
+	DayChange      string `json:"dayChange"`
+	DayChangePct   string `json:"dayChangePct"`
+	WeekChangePct  string `json:"weekChangePct,omitempty"`
+	MonthChangePct string `json:"monthChangePct,omitempty"`
+	TotalGain      string `json:"totalGain"`
+	TotalGainPct   string `json:"totalGainPct"`
+	Weight         string `json:"weight"`
+	AsOfDate       string `json:"asOfDate"`
 }

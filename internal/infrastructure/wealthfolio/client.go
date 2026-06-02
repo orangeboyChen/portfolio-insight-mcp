@@ -1,12 +1,14 @@
 package wealthfolio
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/orangeboyChen/portfolio-insight-mcp/internal/domain/portfolio"
@@ -224,4 +226,212 @@ func (c *Client) GetAccountPerformance(ctx context.Context, accountIDs []string)
 	}
 
 	return performances, nil
+}
+
+// GetQuoteHistory retrieves historical price quotes for a given symbol (asset ID).
+func (c *Client) GetQuoteHistory(ctx context.Context, symbol string) ([]portfolio.QuoteRecord, error) {
+	path := "/api/v1/market-data/quotes/history?symbol=" + symbol
+	data, err := c.doAuthenticatedRequest(ctx, http.MethodGet, path, nil)
+	if err != nil {
+		return nil, fmt.Errorf("get quote history for %s: %w", symbol, err)
+	}
+
+	var quotes []portfolio.QuoteRecord
+	if err := json.Unmarshal(data, &quotes); err != nil {
+		return nil, fmt.Errorf("decode quote history: %w", err)
+	}
+
+	return quotes, nil
+}
+
+// RefreshPortfolio triggers a portfolio update (incremental market sync + recalculation).
+// The Wealthfolio API returns 202 Accepted and processes asynchronously.
+// We subscribe to the SSE event stream to wait for completion or error.
+func (c *Client) RefreshPortfolio(ctx context.Context) error {
+	if err := c.ensureAuth(ctx); err != nil {
+		return fmt.Errorf("authenticate: %w", err)
+	}
+
+	// Open SSE connection BEFORE triggering update so we don't miss the event.
+	sseCtx, sseCancel := context.WithTimeout(ctx, 90*time.Second)
+	defer sseCancel()
+
+	sseReq, err := http.NewRequestWithContext(sseCtx, http.MethodGet, c.baseURL+"/api/v1/events/stream", nil)
+	if err != nil {
+		return fmt.Errorf("create SSE request: %w", err)
+	}
+	sseReq.Header.Set("Accept", "text/event-stream")
+	if c.token != "" {
+		sseReq.Header.Set("Authorization", "Bearer "+c.token)
+	}
+
+	sseResp, err := c.httpClient.Do(sseReq)
+	if err != nil {
+		return fmt.Errorf("connect to event stream: %w", err)
+	}
+	defer func() { _ = sseResp.Body.Close() }()
+
+	if sseResp.StatusCode != http.StatusOK {
+		_ = sseResp.Body.Close()
+		return fmt.Errorf("event stream returned status %d", sseResp.StatusCode)
+	}
+
+	// Now trigger the portfolio update with an empty JSON body.
+	_, err = c.doAuthenticatedRequest(ctx, http.MethodPost, "/api/v1/portfolio/update", []byte("{}"))
+	if err != nil {
+		return fmt.Errorf("trigger portfolio update: %w", err)
+	}
+
+	// Read SSE events until we see portfolio:update-complete or portfolio:update-error.
+	return c.waitForPortfolioEvent(sseCtx, sseResp.Body)
+}
+
+// waitForPortfolioEvent reads an SSE stream and returns when a portfolio completion
+// or error event is received.
+func (c *Client) waitForPortfolioEvent(ctx context.Context, body io.Reader) error {
+	scanner := bufio.NewScanner(body)
+	var currentEvent string
+
+	for scanner.Scan() {
+		select {
+		case <-ctx.Done():
+			return fmt.Errorf("timeout waiting for portfolio update to complete")
+		default:
+		}
+
+		line := scanner.Text()
+
+		if strings.HasPrefix(line, "event:") {
+			currentEvent = strings.TrimSpace(strings.TrimPrefix(line, "event:"))
+		} else if line == "" {
+			// Empty line = end of event
+			switch currentEvent {
+			case "portfolio:update-complete":
+				return nil
+			case "portfolio:update-error":
+				return fmt.Errorf("portfolio update failed on server side")
+			}
+			currentEvent = ""
+		}
+	}
+
+	if err := scanner.Err(); err != nil {
+		return fmt.Errorf("reading event stream: %w", err)
+	}
+
+	return fmt.Errorf("event stream closed before receiving completion event")
+}
+
+// SearchActivities searches activities with pagination and optional filters.
+func (c *Client) SearchActivities(ctx context.Context, page, pageSize int, accountIDs []string, activityTypes []string) (*portfolio.ActivitySearchResult, error) {
+	body := map[string]interface{}{
+		"page":     page,
+		"pageSize": pageSize,
+		"sort":     map[string]interface{}{"id": "date", "desc": true},
+	}
+	if len(accountIDs) > 0 {
+		body["accountIdFilter"] = accountIDs
+	}
+	if len(activityTypes) > 0 {
+		body["activityTypeFilter"] = activityTypes
+	}
+
+	reqBody, _ := json.Marshal(body)
+	data, err := c.doAuthenticatedRequest(ctx, http.MethodPost, "/api/v1/activities/search", reqBody)
+	if err != nil {
+		return nil, fmt.Errorf("search activities: %w", err)
+	}
+
+	var resp struct {
+		Data []struct {
+			ID              string      `json:"id"`
+			AccountID       string      `json:"accountId"`
+			AccountName     string      `json:"accountName"`
+			AccountCurrency string      `json:"accountCurrency"`
+			AssetID         string      `json:"assetId"`
+			ActivityType    string      `json:"activityType"`
+			Date            string      `json:"date"`
+			Quantity        json.Number `json:"quantity"`
+			UnitPrice       json.Number `json:"unitPrice"`
+			Amount          json.Number `json:"amount"`
+			Fee             json.Number `json:"fee"`
+			Currency        string      `json:"currency"`
+			AssetSymbol     string      `json:"assetSymbol"`
+			AssetName       *string     `json:"assetName"`
+			InstrumentType  *string     `json:"instrumentType"`
+			Comment         *string     `json:"comment"`
+		} `json:"data"`
+		Meta struct {
+			TotalRowCount int `json:"totalRowCount"`
+		} `json:"meta"`
+	}
+	if err := json.Unmarshal(data, &resp); err != nil {
+		return nil, fmt.Errorf("decode activities: %w", err)
+	}
+
+	activities := make([]portfolio.Activity, 0, len(resp.Data))
+	for _, d := range resp.Data {
+		var assetName, instrumentType, comment string
+		if d.AssetName != nil {
+			assetName = *d.AssetName
+		}
+		if d.InstrumentType != nil {
+			instrumentType = *d.InstrumentType
+		}
+		if d.Comment != nil {
+			comment = *d.Comment
+		}
+		activities = append(activities, portfolio.Activity{
+			ID:              d.ID,
+			AccountID:       d.AccountID,
+			AccountName:     d.AccountName,
+			AccountCurrency: d.AccountCurrency,
+			AssetID:         d.AssetID,
+			ActivityType:    d.ActivityType,
+			Date:            d.Date,
+			Quantity:        d.Quantity,
+			UnitPrice:       d.UnitPrice,
+			Amount:          d.Amount,
+			Fee:             d.Fee,
+			Currency:        d.Currency,
+			Symbol:          d.AssetSymbol,
+			SymbolName:      assetName,
+			InstrumentType:  instrumentType,
+			Comment:         comment,
+		})
+	}
+
+	return &portfolio.ActivitySearchResult{
+		Activities: activities,
+		TotalCount: resp.Meta.TotalRowCount,
+	}, nil
+}
+
+// GetPerformanceHistory retrieves performance metrics for a given scope and date range.
+func (c *Client) GetPerformanceHistory(ctx context.Context, itemType, itemID, startDate, endDate string, accountIDs []string) (*portfolio.PerformanceHistory, error) {
+	body := map[string]interface{}{
+		"itemType":  itemType,
+		"itemId":    itemID,
+		"startDate": startDate,
+		"endDate":   endDate,
+	}
+	if itemType == "account" && len(accountIDs) > 0 {
+		body["filter"] = map[string]interface{}{
+			"type":       "accounts",
+			"accountIds": accountIDs,
+		}
+	}
+
+	reqBody, _ := json.Marshal(body)
+	data, err := c.doAuthenticatedRequest(ctx, http.MethodPost, "/api/v1/performance/history", reqBody)
+	if err != nil {
+		return nil, fmt.Errorf("get performance history: %w", err)
+	}
+
+	var perf portfolio.PerformanceHistory
+	if err := json.Unmarshal(data, &perf); err != nil {
+		return nil, fmt.Errorf("decode performance history: %w", err)
+	}
+
+	return &perf, nil
 }

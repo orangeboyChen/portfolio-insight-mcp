@@ -33,19 +33,34 @@ func NewServer(svc *application.PortfolioService) *Server {
 
 	// Register tools
 	mcp.AddTool(server, &mcp.Tool{
+		Name:        "refresh_portfolio",
+		Description: "Trigger a portfolio data refresh: syncs latest market quotes and recalculates portfolio snapshots. MUST be called before querying holdings/overview if market data may be stale (e.g., at the start of a new session or after market close). Returns when the update is complete or after a timeout (max 60s). The operation is idempotent and safe to call multiple times.",
+	}, newRefreshPortfolioHandler(svc))
+
+	mcp.AddTool(server, &mcp.Tool{
 		Name:        "get_daily_gain_loss",
 		Description: "Get yesterday's (most recent trading day) portfolio gain/loss summary across all accounts. Returns total daily P&L amount, currency, and per-account breakdown including day gain/loss amount and percentage.",
 	}, newDailyGainLossHandler(svc))
 
 	mcp.AddTool(server, &mcp.Tool{
-		Name:        "get_weekly_gain_loss",
-		Description: "Get the current week's portfolio gain/loss with per-holding breakdown. Returns total weekly P&L, and for each holding: symbol, name, asset class, day change amount/percentage, total gain, market value, cost basis, and weight. Useful for identifying which securities contributed most to weekly performance.",
-	}, newWeeklyGainLossHandler(svc))
+		Name:        "get_portfolio_overview",
+		Description: "Get a high-level portfolio snapshot: total market value, total cost basis, total unrealized gain/loss (amount and percentage), day change, week change (7-day gain and return %), month change (30-day gain and return %), number of holdings, and base currency. Ideal for a quick health check or daily/weekly summary header.",
+	}, newPortfolioOverviewHandler(svc))
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "get_asset_allocation",
+		Description: "Get portfolio allocation breakdown by asset class (e.g., Equity, Fixed Income, Cash, Crypto). Each class includes: total market value, cost basis, gain/loss (amount and percentage), weight percentage, and number of holdings. Useful for rebalancing analysis or diversification assessment.",
+	}, newAssetAllocationHandler(svc))
 
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "get_holdings_detail",
-		Description: "Get detailed position information for every holding across all accounts. Each holding includes: account name, security symbol, security name, asset class, currency, quantity, current price, market value, cost basis, day change (amount and percentage), total gain (amount and percentage), portfolio weight, and data date. Provides sufficient data for an agent to search internet news by symbol/name and compose Telegram notifications.",
+		Description: "Get detailed position information for every holding across all accounts. Each holding includes: account name, security symbol, security name, asset class, currency, quantity, current price, market value, cost basis, day change (amount and percentage), 7-day change (amount and percentage), 30-day change (amount and percentage), total gain (amount and percentage), portfolio weight, and data date. Provides sufficient data for an agent to search internet news by symbol/name and compose Telegram notifications.",
 	}, newHoldingsDetailHandler(svc))
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "get_recent_activities",
+		Description: "Get recent investment activities (trades, dividends, deposits, withdrawals, etc.) sorted by date descending. Returns up to `limit` records (default 20, max 100). Each activity includes: account name, date, type (BUY/SELL/DIVIDEND/DEPOSIT/WITHDRAWAL/etc.), security symbol, security name, quantity, unit price, total amount, fee, and currency. Useful for reviewing recent transactions and assessing whether trading decisions are reasonable.",
+	}, newRecentActivitiesHandler(svc))
 
 	return &Server{mcpServer: server}
 }
@@ -107,6 +122,22 @@ func bearerAuthMiddleware(token string, next http.Handler) http.Handler {
 
 type emptyInput struct{}
 
+func newRefreshPortfolioHandler(svc *application.PortfolioService) func(ctx context.Context, req *mcp.CallToolRequest, input emptyInput) (*mcp.CallToolResult, any, error) {
+	return func(ctx context.Context, req *mcp.CallToolRequest, input emptyInput) (*mcp.CallToolResult, any, error) {
+		if err := svc.RefreshPortfolio(ctx); err != nil {
+			log.Printf("ERROR refresh_portfolio: %v", err)
+			return &mcp.CallToolResult{
+				Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("failed to refresh portfolio: %v", err)}},
+				IsError: true,
+			}, nil, nil
+		}
+
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.TextContent{Text: "Portfolio refreshed successfully. Market quotes synced and snapshots recalculated. You can now query holdings and overview for up-to-date data."}},
+		}, nil, nil
+	}
+}
+
 func newDailyGainLossHandler(svc *application.PortfolioService) func(ctx context.Context, req *mcp.CallToolRequest, input emptyInput) (*mcp.CallToolResult, any, error) {
 	return func(ctx context.Context, req *mcp.CallToolRequest, input emptyInput) (*mcp.CallToolResult, any, error) {
 		summary, err := svc.GetDailyGainLoss(ctx)
@@ -125,13 +156,31 @@ func newDailyGainLossHandler(svc *application.PortfolioService) func(ctx context
 	}
 }
 
-func newWeeklyGainLossHandler(svc *application.PortfolioService) func(ctx context.Context, req *mcp.CallToolRequest, input emptyInput) (*mcp.CallToolResult, any, error) {
+func newPortfolioOverviewHandler(svc *application.PortfolioService) func(ctx context.Context, req *mcp.CallToolRequest, input emptyInput) (*mcp.CallToolResult, any, error) {
 	return func(ctx context.Context, req *mcp.CallToolRequest, input emptyInput) (*mcp.CallToolResult, any, error) {
-		result, err := svc.GetWeeklyGainLoss(ctx)
+		overview, err := svc.GetPortfolioOverview(ctx)
 		if err != nil {
-			log.Printf("ERROR get_weekly_gain_loss: %v", err)
+			log.Printf("ERROR get_portfolio_overview: %v", err)
 			return &mcp.CallToolResult{
-				Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("failed to get weekly gain/loss: %v", err)}},
+				Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("failed to get portfolio overview: %v", err)}},
+				IsError: true,
+			}, nil, nil
+		}
+
+		data, _ := json.MarshalIndent(overview, "", "  ")
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.TextContent{Text: string(data)}},
+		}, nil, nil
+	}
+}
+
+func newAssetAllocationHandler(svc *application.PortfolioService) func(ctx context.Context, req *mcp.CallToolRequest, input emptyInput) (*mcp.CallToolResult, any, error) {
+	return func(ctx context.Context, req *mcp.CallToolRequest, input emptyInput) (*mcp.CallToolResult, any, error) {
+		result, err := svc.GetAssetAllocation(ctx)
+		if err != nil {
+			log.Printf("ERROR get_asset_allocation: %v", err)
+			return &mcp.CallToolResult{
+				Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("failed to get asset allocation: %v", err)}},
 				IsError: true,
 			}, nil, nil
 		}
@@ -155,6 +204,28 @@ func newHoldingsDetailHandler(svc *application.PortfolioService) func(ctx contex
 		}
 
 		data, _ := json.MarshalIndent(details, "", "  ")
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.TextContent{Text: string(data)}},
+		}, nil, nil
+	}
+}
+
+type recentActivitiesInput struct {
+	Limit int `json:"limit"`
+}
+
+func newRecentActivitiesHandler(svc *application.PortfolioService) func(ctx context.Context, req *mcp.CallToolRequest, input recentActivitiesInput) (*mcp.CallToolResult, any, error) {
+	return func(ctx context.Context, req *mcp.CallToolRequest, input recentActivitiesInput) (*mcp.CallToolResult, any, error) {
+		result, err := svc.GetRecentActivities(ctx, input.Limit)
+		if err != nil {
+			log.Printf("ERROR get_recent_activities: %v", err)
+			return &mcp.CallToolResult{
+				Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("failed to get recent activities: %v", err)}},
+				IsError: true,
+			}, nil, nil
+		}
+
+		data, _ := json.MarshalIndent(result, "", "  ")
 		return &mcp.CallToolResult{
 			Content: []mcp.Content{&mcp.TextContent{Text: string(data)}},
 		}, nil, nil
