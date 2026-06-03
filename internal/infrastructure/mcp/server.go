@@ -89,7 +89,9 @@ func (s *Server) MCPServer() *mcp.Server {
 func (s *Server) StartHTTP(cfg ServerConfig) error {
 	handler := mcp.NewStreamableHTTPHandler(func(r *http.Request) *mcp.Server {
 		return s.mcpServer
-	}, nil)
+	}, &mcp.StreamableHTTPOptions{
+		Stateless: true,
+	})
 
 	// Wrap with auth middleware if token is configured
 	var httpHandler http.Handler = handler

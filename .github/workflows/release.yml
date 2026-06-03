@@ -88,6 +88,7 @@ jobs:
     outputs:
       image: ${{ steps.meta.outputs.tags }}
       digest: ${{ steps.build.outputs.digest }}
+      docker_tag: ${{ steps.version.outputs.docker_tag }}
     steps:
       - uses: actions/checkout@v4
 
@@ -104,13 +105,19 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Strip v prefix for Docker tag
+        id: version
+        run: echo "docker_tag=${TAG#v}" >> "$GITHUB_OUTPUT"
+        env:
+          TAG: ${{ needs.bump-version.outputs.new_tag }}
+
       - name: Extract metadata
         id: meta
         uses: docker/metadata-action@v5
         with:
           images: ghcr.io/${{ github.repository }}
           tags: |
-            type=raw,value=${{ needs.bump-version.outputs.new_tag }}
+            type=raw,value=${{ steps.version.outputs.docker_tag }}
             type=raw,value=latest
             type=sha
 
@@ -152,7 +159,7 @@ jobs:
             ## Container image
 
             ```
-            docker pull ghcr.io/${{ github.repository }}:${{ needs.bump-version.outputs.new_tag }}
+            docker pull ghcr.io/${{ github.repository }}:${{ needs.docker.outputs.docker_tag }}
             ```
 
             Supported platforms: `linux/amd64`, `linux/arm64`.
