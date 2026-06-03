@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -255,7 +256,7 @@ func newRecentActivitiesHandler(svc *application.PortfolioService) func(ctx cont
 
 type quoteHistoryInput struct {
 	Symbols   string `json:"symbols,omitempty" jsonschema:"Comma-separated ticker symbols, e.g. AAPL,MSFT,BTC. If omitted, returns history for all current holdings."`
-	Days      int    `json:"days,omitempty" jsonschema:"Number of days of history (e.g. 7, 30, 90, 365). Takes precedence over startDate/endDate. Defaults to 30 if nothing specified."`
+	Days      string `json:"days,omitempty" jsonschema:"Number of days of history (e.g. 7, 30, 90, 365). Takes precedence over startDate/endDate. Defaults to 30 if nothing specified."`
 	StartDate string `json:"startDate,omitempty" jsonschema:"Start date in YYYY-MM-DD format. Used only if days is not provided."`
 	EndDate   string `json:"endDate,omitempty" jsonschema:"End date in YYYY-MM-DD format. Defaults to today if omitted."`
 }
@@ -271,7 +272,12 @@ func newQuoteHistoryHandler(svc *application.PortfolioService) func(ctx context.
 				}
 			}
 		}
-		days := input.Days
+		days := 0
+		if input.Days != "" {
+			if v, err := strconv.Atoi(strings.TrimSpace(input.Days)); err == nil {
+				days = v
+			}
+		}
 		result, err := svc.GetQuoteHistory(ctx, symbols, days, input.StartDate, input.EndDate)
 		if err != nil {
 			log.Printf("ERROR get_quote_history: %v", err)
