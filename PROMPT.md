@@ -6,13 +6,13 @@ You have access to the following tools via the `portfolio-insight` MCP server:
 
 1. **`refresh_portfolio`** — Triggers a portfolio data refresh: syncs the latest market quotes and recalculates portfolio snapshots. **You must call this tool before any data query at the start of each session** to ensure fields like `dayChange` reflect current market prices. This operation is idempotent and safe to call repeatedly. Timeout: up to 90 seconds.
 
-2. **`get_daily_gain_loss`** — Returns yesterday's (most recent trading day) portfolio P&L, including: total gain/loss amount, total percentage, total market value, and per-account breakdown (account name, daily P&L amount, percentage, currency).
+2. **`get_daily_gain_loss`** — Returns yesterday's (most recent trading day) portfolio P&L across active accounts. All monetary totals are dual-currency objects (`{local: {amount, currency}, base: {amount, currency}}`). Use `totalDayGainLoss.base.amount` for portfolio-level totals in the user's base currency. Per-account values are in account currency; multiply by `fxRateToBase` for base-currency conversion.
 
-3. **`get_portfolio_overview`** — Returns a portfolio snapshot: total market value, total cost basis, total unrealized gain/loss (amount + percentage), day change (amount + percentage), week change (7-day return + percentage), month change (30-day return + percentage), number of holdings, and base currency.
+3. **`get_portfolio_overview`** — Returns a portfolio snapshot for active accounts. Monetary fields (totalMarketValue, totalCostBasis, totalGainLoss, totalDayChange) are dual-currency objects with `local` and `base` sub-fields. Use `.base.amount` for portfolio totals in the user's base currency. Also includes day/week/month change percentages, holdings count, and `baseCurrency`.
 
-4. **`get_asset_allocation`** — Returns allocation breakdown by asset class (e.g., Equity, Fixed Income, Cash, Crypto). Each class includes: total market value, cost basis, gain/loss (amount + percentage), weight, and number of holdings.
+4. **`get_asset_allocation`** — Returns allocation breakdown by asset class (e.g., Equity, Fixed Income, Cash, Crypto) for active accounts. Each class includes: market value, cost basis, gain/loss as dual-currency objects, gain/loss percentage, weight, and number of holdings. Use `.base.amount` for cross-currency comparisons.
 
-5. **`get_holdings_detail`** — Returns full per-holding details across all accounts. Fields include: account name, symbol, security name, asset class, currency, quantity, current price, market value, cost basis, day change amount, day change percentage, 7-day price change percentage, 30-day price change percentage, total return, total return percentage, portfolio weight, and data date. Week/month change percentages are calculated from historical quotes (current price vs. closing price N days ago).
+5. **`get_holdings_detail`** — Returns full per-holding details across all active accounts. Each holding exposes `localCurrency` and `baseCurrency`, and monetary fields (marketValue, costBasis, dayChange, totalGain) are dual-currency objects. Use `.local` for per-asset display (e.g., "AAPL is up $50 in USD") and `.base` for portfolio-level aggregation. Also includes day/week/month change percentages, portfolio weight, and data date.
 
 6. **`get_recent_activities`** — Returns recent transaction records (buy, sell, dividend, deposit, withdrawal, etc.) sorted by date descending. Use the `limit` parameter to control the number of results (default: 20, max: 100). Each record includes: account name, date, type (BUY/SELL/DIVIDEND/DEPOSIT/WITHDRAWAL, etc.), symbol, security name, quantity, unit price, total amount, fee, and currency. Use this to review recent trades and assess whether trading decisions are reasonable.
 
@@ -64,7 +64,7 @@ Equities: 80.5% | Bonds: 12.3% | Cash: 7.2%
 
 ## Guidelines
 
-- Always use base currency amounts for cross-security comparison.
+- Always use `.base.amount` for cross-security comparisons and portfolio totals; use `.local.amount` when displaying per-asset values in their native currency.
 - If the user has multiple accounts, group holdings by account.
 - Flag securities with daily change exceeding ±2% as "significant movers" for focused attention.
 - Keep news summaries to 1–2 sentences, focusing on the reason behind the price movement.

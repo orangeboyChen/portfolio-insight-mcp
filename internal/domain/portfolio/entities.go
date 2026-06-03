@@ -2,6 +2,18 @@ package portfolio
 
 import "encoding/json"
 
+// Money represents a monetary amount with its currency code.
+type Money struct {
+	Amount   json.Number `json:"amount"`
+	Currency string      `json:"currency"`
+}
+
+// DualMoney holds a value expressed in both local (asset) and base (portfolio) currencies.
+type DualMoney struct {
+	Local Money `json:"local"`
+	Base  Money `json:"base"`
+}
+
 // MoneyAmount represents a monetary value in both local and base currencies.
 type MoneyAmount struct {
 	Local json.Number `json:"local"`
@@ -23,6 +35,8 @@ type Holding struct {
 	AccountID         string      `json:"accountId"`
 	HoldingType       string      `json:"holdingType"`
 	Instrument        Instrument  `json:"instrument"`
+	LocalCurrency     string      `json:"localCurrency"`
+	BaseCurrency      string      `json:"baseCurrency"`
 	Quantity          json.Number `json:"quantity"`
 	Price             json.Number `json:"price"`
 	MarketValue       MoneyAmount `json:"marketValue"`
@@ -58,6 +72,7 @@ type AccountPerformance struct {
 	AccountName              string      `json:"accountName"`
 	AccountCurrency          string      `json:"accountCurrency"`
 	BaseCurrency             string      `json:"baseCurrency"`
+	FxRateToBase             json.Number `json:"fxRateToBase"`
 	TotalValue               json.Number `json:"totalValue"`
 	TotalGainLossAmount      json.Number `json:"totalGainLossAmount"`
 	CumulativeReturnPercent  json.Number `json:"cumulativeReturnPercent"`
@@ -68,10 +83,10 @@ type AccountPerformance struct {
 
 // PortfolioSummary aggregates the total daily gain/loss across all accounts.
 type PortfolioSummary struct {
-	TotalDayGainLoss    string               `json:"totalDayGainLoss"`
+	TotalDayGainLoss    DualMoney            `json:"totalDayGainLoss"`
 	TotalDayGainLossPct string               `json:"totalDayGainLossPct"`
-	TotalValue          string               `json:"totalValue"`
-	Currency            string               `json:"currency"`
+	TotalValue          DualMoney            `json:"totalValue"`
+	BaseCurrency        string               `json:"baseCurrency"`
 	Accounts            []AccountPerformance `json:"accounts"`
 }
 
@@ -127,21 +142,22 @@ type ActivitySearchResult struct {
 // HoldingDetail is an enriched holding record exposed via MCP,
 // designed to provide sufficient context for downstream agents.
 type HoldingDetail struct {
-	AccountName    string `json:"accountName"`
-	Symbol         string `json:"symbol"`
-	Name           string `json:"name"`
-	AssetClass     string `json:"assetClass"`
-	Currency       string `json:"currency"`
-	Quantity       string `json:"quantity"`
-	Price          string `json:"price"`
-	MarketValue    string `json:"marketValue"`
-	CostBasis      string `json:"costBasis"`
-	DayChange      string `json:"dayChange"`
-	DayChangePct   string `json:"dayChangePct"`
-	WeekChangePct  string `json:"weekChangePct,omitempty"`
-	MonthChangePct string `json:"monthChangePct,omitempty"`
-	TotalGain      string `json:"totalGain"`
-	TotalGainPct   string `json:"totalGainPct"`
-	Weight         string `json:"weight"`
-	AsOfDate       string `json:"asOfDate"`
+	AccountName    string    `json:"accountName"`
+	Symbol         string    `json:"symbol"`
+	Name           string    `json:"name"`
+	AssetClass     string    `json:"assetClass"`
+	LocalCurrency  string    `json:"localCurrency"`
+	BaseCurrency   string    `json:"baseCurrency"`
+	Quantity       string    `json:"quantity"`
+	Price          string    `json:"price"`
+	MarketValue    DualMoney `json:"marketValue"`
+	CostBasis      DualMoney `json:"costBasis"`
+	DayChange      DualMoney `json:"dayChange"`
+	DayChangePct   string    `json:"dayChangePct"`
+	WeekChangePct  string    `json:"weekChangePct,omitempty"`
+	MonthChangePct string    `json:"monthChangePct,omitempty"`
+	TotalGain      DualMoney `json:"totalGain"`
+	TotalGainPct   string    `json:"totalGainPct"`
+	Weight         string    `json:"weight"`
+	AsOfDate       string    `json:"asOfDate"`
 }

@@ -39,22 +39,22 @@ func NewServer(svc *application.PortfolioService) *Server {
 
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "get_daily_gain_loss",
-		Description: "Get yesterday's (most recent trading day) portfolio gain/loss summary across all accounts. Returns total daily P&L amount, currency, and per-account breakdown including day gain/loss amount and percentage.",
+		Description: "Get yesterday's (most recent trading day) portfolio gain/loss summary across all active accounts. Returns total daily P&L as dual-currency (local + base) amounts, base currency, and per-account breakdown including day gain/loss amount, percentage, and FX rate to base. Values are converted to base currency before summing; use totalDayGainLoss.base for portfolio-level totals.",
 	}, newDailyGainLossHandler(svc))
 
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "get_portfolio_overview",
-		Description: "Get a high-level portfolio snapshot: total market value, total cost basis, total unrealized gain/loss (amount and percentage), day change, week change (7-day gain and return %), month change (30-day gain and return %), number of holdings, and base currency. Ideal for a quick health check or daily/weekly summary header.",
+		Description: "Get a high-level portfolio snapshot: total market value, total cost basis, total unrealized gain/loss (amount and percentage), day change, week change (7-day gain and return %), month change (30-day gain and return %), number of holdings, and base currency. All monetary amounts are dual-currency objects with local and base values; use .base.amount for portfolio-level totals in the user's base currency. Only active accounts are included.",
 	}, newPortfolioOverviewHandler(svc))
 
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "get_asset_allocation",
-		Description: "Get portfolio allocation breakdown by asset class (e.g., Equity, Fixed Income, Cash, Crypto). Each class includes: total market value, cost basis, gain/loss (amount and percentage), weight percentage, and number of holdings. Useful for rebalancing analysis or diversification assessment.",
+		Description: "Get portfolio allocation breakdown by asset class (e.g., Equity, Fixed Income, Cash, Crypto). Each class includes: market value, cost basis, gain/loss as dual-currency objects (local + base), gain/loss percentage, weight percentage, and number of holdings. Use .base.amount for cross-currency comparisons. Only active accounts are included.",
 	}, newAssetAllocationHandler(svc))
 
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "get_holdings_detail",
-		Description: "Get detailed position information for every holding across all accounts. Each holding includes: account name, security symbol, security name, asset class, currency, quantity, current price, market value, cost basis, day change (amount and percentage), 7-day change (amount and percentage), 30-day change (amount and percentage), total gain (amount and percentage), portfolio weight, and data date. Provides sufficient data for an agent to search internet news by symbol/name and compose Telegram notifications.",
+		Description: "Get detailed position information for every holding across all active accounts. Each holding includes: account name, security symbol, security name, asset class, localCurrency, baseCurrency, quantity, current price, market value / cost basis / day change / total gain as dual-currency objects (local + base), day change %, 7-day price change %, 30-day price change %, portfolio weight, and data date. Use .local for per-asset display and .base for portfolio-level aggregation.",
 	}, newHoldingsDetailHandler(svc))
 
 	mcp.AddTool(server, &mcp.Tool{

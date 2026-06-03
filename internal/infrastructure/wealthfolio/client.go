@@ -153,7 +153,10 @@ func (c *Client) doAuthenticatedRequest(ctx context.Context, method, path string
 	return io.ReadAll(resp.Body)
 }
 
-// GetAccounts retrieves all active investment accounts.
+// GetAccounts retrieves all active, non-archived investment accounts.
+// Wealthfolio has two independent flags: is_archived and is_active.
+// The API query excludes archived accounts; we additionally filter out
+// inactive (hidden) accounts client-side.
 func (c *Client) GetAccounts(ctx context.Context) ([]portfolio.Account, error) {
 	data, err := c.doAuthenticatedRequest(ctx, http.MethodGet, "/api/v1/accounts?includeArchived=false", nil)
 	if err != nil {
@@ -165,7 +168,13 @@ func (c *Client) GetAccounts(ctx context.Context) ([]portfolio.Account, error) {
 		return nil, fmt.Errorf("decode accounts: %w", err)
 	}
 
-	return accounts, nil
+	filtered := accounts[:0]
+	for _, a := range accounts {
+		if a.IsActive {
+			filtered = append(filtered, a)
+		}
+	}
+	return filtered, nil
 }
 
 // GetAllHoldings retrieves all holdings across all accounts.
