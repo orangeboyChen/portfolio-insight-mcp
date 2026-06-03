@@ -74,7 +74,7 @@ func NewServer(svc *application.PortfolioService) *Server {
 
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "get_quote_history",
-		Description: "Get historical price data for one or more holdings over a specified time range. Useful for trend analysis, charting, technical analysis, and comparing price movements across multiple securities. Each result includes: symbol, currency (the denomination of the price, e.g. USD/HKD/EUR), and an array of quote records (date, close price, adjusted close price). Returns results grouped by symbol. Prices are in the asset's native trading currency (see `currency` field).\n\nParameters:\n- symbols (string, REQUIRED): Comma-separated ticker symbols, e.g. \"AAPL,MSFT,BTC\". Do NOT pass as array.\n- days (integer, optional): Number of days of history to retrieve (e.g. 7, 30, 90, 180, 365). If provided, takes precedence over startDate/endDate. Defaults to 30 if neither days nor date range is specified.\n- startDate (string, optional): Start date in YYYY-MM-DD format. Used only if `days` is not provided.\n- endDate (string, optional): End date in YYYY-MM-DD format. Defaults to today if omitted.\n\nExample call: {\"symbols\": \"AAPL,NVDA,BTC\", \"days\": 30}",
+		Description: "Get historical price data for one or more holdings over a specified time range. Useful for trend analysis, charting, technical analysis, and comparing price movements across multiple securities. Each result includes: symbol, currency (the denomination of the price, e.g. USD/HKD/EUR), and an array of quote records (date, close price, adjusted close price). Returns results grouped by symbol. Prices are in the asset's native trading currency (see `currency` field).\n\nParameters:\n- symbols (string, optional): Comma-separated ticker symbols, e.g. \"AAPL,MSFT,BTC\". If omitted, returns history for all current holdings.\n- days (integer, optional): Number of days of history to retrieve (e.g. 7, 30, 90, 180, 365). If provided, takes precedence over startDate/endDate. Defaults to 30 if neither days nor date range is specified.\n- startDate (string, optional): Start date in YYYY-MM-DD format. Used only if `days` is not provided.\n- endDate (string, optional): End date in YYYY-MM-DD format. Defaults to today if omitted.\n\nExample call: {\"symbols\": \"AAPL,NVDA,BTC\", \"days\": 30}",
 	}, newQuoteHistoryHandler(svc))
 
 	return &Server{mcpServer: server}
@@ -254,15 +254,23 @@ func newRecentActivitiesHandler(svc *application.PortfolioService) func(ctx cont
 }
 
 type quoteHistoryInput struct {
-	Symbols   []string `json:"symbols,omitempty" jsonschema:"Array of ticker symbols, e.g. [\"AAPL\", \"MSFT\", \"BTC\"]. If omitted, returns history for all current holdings."`
-	Days      int      `json:"days,omitempty" jsonschema:"Number of days of history (e.g. 7, 30, 90, 365). Takes precedence over startDate/endDate. Defaults to 30 if nothing specified."`
-	StartDate string   `json:"startDate,omitempty" jsonschema:"Start date in YYYY-MM-DD format. Used only if days is not provided."`
-	EndDate   string   `json:"endDate,omitempty" jsonschema:"End date in YYYY-MM-DD format. Defaults to today if omitted."`
+	Symbols   string `json:"symbols,omitempty" jsonschema:"Comma-separated ticker symbols, e.g. AAPL,MSFT,BTC. If omitted, returns history for all current holdings."`
+	Days      int    `json:"days,omitempty" jsonschema:"Number of days of history (e.g. 7, 30, 90, 365). Takes precedence over startDate/endDate. Defaults to 30 if nothing specified."`
+	StartDate string `json:"startDate,omitempty" jsonschema:"Start date in YYYY-MM-DD format. Used only if days is not provided."`
+	EndDate   string `json:"endDate,omitempty" jsonschema:"End date in YYYY-MM-DD format. Defaults to today if omitted."`
 }
 
 func newQuoteHistoryHandler(svc *application.PortfolioService) func(ctx context.Context, req *mcp.CallToolRequest, input quoteHistoryInput) (*mcp.CallToolResult, any, error) {
 	return func(ctx context.Context, req *mcp.CallToolRequest, input quoteHistoryInput) (*mcp.CallToolResult, any, error) {
-		symbols := input.Symbols
+		var symbols []string
+		if input.Symbols != "" {
+			for _, s := range strings.Split(input.Symbols, ",") {
+				s = strings.TrimSpace(s)
+				if s != "" {
+					symbols = append(symbols, s)
+				}
+			}
+		}
 		days := input.Days
 		result, err := svc.GetQuoteHistory(ctx, symbols, days, input.StartDate, input.EndDate)
 		if err != nil {
