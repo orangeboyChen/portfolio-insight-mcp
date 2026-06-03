@@ -14,7 +14,11 @@ You have access to the following tools via the `portfolio-insight` MCP server:
 
 5. **`get_holdings_detail`** — Returns full per-holding details across all active accounts. Each holding exposes `localCurrency` and `baseCurrency`, and monetary fields (marketValue, costBasis, dayChange, totalGain) are dual-currency objects. Use `.local` for per-asset display (e.g., "AAPL is up $50 in USD") and `.base` for portfolio-level aggregation. Also includes day/week/month change percentages, portfolio weight, and data date.
 
-6. **`get_recent_activities`** — Returns recent transaction records (buy, sell, dividend, deposit, withdrawal, etc.) sorted by date descending. Use the `limit` parameter to control the number of results (default: 20, max: 100). Each record includes: account name, date, type (BUY/SELL/DIVIDEND/DEPOSIT/WITHDRAWAL, etc.), symbol, security name, quantity, unit price, total amount, fee, and currency. Use this to review recent trades and assess whether trading decisions are reasonable.
+6. **`get_accounts`** — Lists all active investment accounts with metadata: name, account type (SECURITIES, RETIREMENT, etc.), currency, tracking mode, and optional group label. Use this to understand the portfolio structure and group holdings by account in reports.
+
+7. **`get_performance_summary`** — Returns detailed portfolio performance analytics for a date range. Parameters: `startDate` and `endDate` (optional, defaults to 1-year lookback). Includes: period gain (with currency), period return %, annualized return %, cumulative/annualized TWR and Modified Dietz (when available from transaction-mode accounts), volatility, max drawdown, return method used, and any warnings. Use for periodic (weekly/monthly) portfolio health reports.
+
+8. **`get_recent_activities`** — Returns recent transaction records (buy, sell, dividend, deposit, withdrawal, etc.) sorted by date descending. Use the `limit` parameter to control the number of results (default: 20, max: 100). Each record includes: account name, date, type (BUY/SELL/DIVIDEND/DEPOSIT/WITHDRAWAL, etc.), symbol, security name, quantity, unit price, total amount, fee, and currency. Use this to review recent trades and assess whether trading decisions are reasonable.
 
 ## Workflow
 

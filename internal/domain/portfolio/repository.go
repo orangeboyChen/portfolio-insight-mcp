@@ -21,6 +21,10 @@ type Repository interface {
 	// startDate and endDate are in "YYYY-MM-DD" format.
 	GetPerformanceHistory(ctx context.Context, itemType, itemID, startDate, endDate string, accountIDs []string) (*PerformanceHistory, error)
 
+	// GetPerformanceSummary retrieves detailed performance analytics (annualized return,
+	// volatility, max drawdown, etc.) for the given scope and date range.
+	GetPerformanceSummary(ctx context.Context, itemType, itemID, startDate, endDate string, accountIDs []string) (*PerformanceSummary, error)
+
 	// GetQuoteHistory retrieves historical price quotes for a given symbol.
 	GetQuoteHistory(ctx context.Context, symbol string) ([]QuoteRecord, error)
 

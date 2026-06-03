@@ -58,6 +58,16 @@ func NewServer(svc *application.PortfolioService) *Server {
 	}, newHoldingsDetailHandler(svc))
 
 	mcp.AddTool(server, &mcp.Tool{
+		Name:        "get_performance_summary",
+		Description: "Get detailed portfolio performance analytics for a date range. Returns: period gain (with currency), period return %, annualized return %, cumulative/annualized TWR and Modified Dietz (when available), volatility, max drawdown, return method used, and any warnings. Defaults to 1-year lookback if no dates specified. Use for periodic (weekly/monthly) portfolio health reports.",
+	}, newPerformanceSummaryHandler(svc))
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "get_accounts",
+		Description: "List all active investment accounts. Each account includes: name, account type (SECURITIES, RETIREMENT, etc.), currency, tracking mode, and optional group label. Useful for understanding the portfolio structure and grouping holdings by account in reports.",
+	}, newAccountsHandler(svc))
+
+	mcp.AddTool(server, &mcp.Tool{
 		Name:        "get_recent_activities",
 		Description: "Get recent investment activities (trades, dividends, deposits, withdrawals, etc.) sorted by date descending. Returns up to `limit` records (default 20, max 100). Each activity includes: account name, date, type (BUY/SELL/DIVIDEND/DEPOSIT/WITHDRAWAL/etc.), security symbol, security name, quantity, unit price, total amount, fee, and currency. Useful for reviewing recent transactions and assessing whether trading decisions are reasonable.",
 	}, newRecentActivitiesHandler(svc))
@@ -221,6 +231,47 @@ func newRecentActivitiesHandler(svc *application.PortfolioService) func(ctx cont
 			log.Printf("ERROR get_recent_activities: %v", err)
 			return &mcp.CallToolResult{
 				Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("failed to get recent activities: %v", err)}},
+				IsError: true,
+			}, nil, nil
+		}
+
+		data, _ := json.MarshalIndent(result, "", "  ")
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.TextContent{Text: string(data)}},
+		}, nil, nil
+	}
+}
+
+type performanceSummaryInput struct {
+	StartDate string `json:"startDate"`
+	EndDate   string `json:"endDate"`
+}
+
+func newPerformanceSummaryHandler(svc *application.PortfolioService) func(ctx context.Context, req *mcp.CallToolRequest, input performanceSummaryInput) (*mcp.CallToolResult, any, error) {
+	return func(ctx context.Context, req *mcp.CallToolRequest, input performanceSummaryInput) (*mcp.CallToolResult, any, error) {
+		result, err := svc.GetPerformanceSummary(ctx, input.StartDate, input.EndDate)
+		if err != nil {
+			log.Printf("ERROR get_performance_summary: %v", err)
+			return &mcp.CallToolResult{
+				Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("failed to get performance summary: %v", err)}},
+				IsError: true,
+			}, nil, nil
+		}
+
+		data, _ := json.MarshalIndent(result, "", "  ")
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.TextContent{Text: string(data)}},
+		}, nil, nil
+	}
+}
+
+func newAccountsHandler(svc *application.PortfolioService) func(ctx context.Context, req *mcp.CallToolRequest, input emptyInput) (*mcp.CallToolResult, any, error) {
+	return func(ctx context.Context, req *mcp.CallToolRequest, input emptyInput) (*mcp.CallToolResult, any, error) {
+		result, err := svc.GetAccounts(ctx)
+		if err != nil {
+			log.Printf("ERROR get_accounts: %v", err)
+			return &mcp.CallToolResult{
+				Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("failed to get accounts: %v", err)}},
 				IsError: true,
 			}, nil, nil
 		}

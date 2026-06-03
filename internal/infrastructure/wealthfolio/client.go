@@ -444,3 +444,32 @@ func (c *Client) GetPerformanceHistory(ctx context.Context, itemType, itemID, st
 
 	return &perf, nil
 }
+
+// GetPerformanceSummary retrieves detailed performance analytics for a given scope and date range.
+func (c *Client) GetPerformanceSummary(ctx context.Context, itemType, itemID, startDate, endDate string, accountIDs []string) (*portfolio.PerformanceSummary, error) {
+	body := map[string]interface{}{
+		"itemType":  itemType,
+		"itemId":    itemID,
+		"startDate": startDate,
+		"endDate":   endDate,
+	}
+	if itemType == "account" && len(accountIDs) > 0 {
+		body["filter"] = map[string]interface{}{
+			"type":       "accounts",
+			"accountIds": accountIDs,
+		}
+	}
+
+	reqBody, _ := json.Marshal(body)
+	data, err := c.doAuthenticatedRequest(ctx, http.MethodPost, "/api/v1/performance/summary", reqBody)
+	if err != nil {
+		return nil, fmt.Errorf("get performance summary: %w", err)
+	}
+
+	var summary portfolio.PerformanceSummary
+	if err := json.Unmarshal(data, &summary); err != nil {
+		return nil, fmt.Errorf("decode performance summary: %w", err)
+	}
+
+	return &summary, nil
+}

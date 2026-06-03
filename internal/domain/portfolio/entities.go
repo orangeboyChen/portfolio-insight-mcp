@@ -104,6 +104,29 @@ type PerformanceHistory struct {
 	PeriodEndDate   string      `json:"periodEndDate"`
 }
 
+// PerformanceSummary holds detailed performance analytics from Wealthfolio's
+// /performance/summary endpoint. Fields use json.Number to preserve precision.
+type PerformanceSummary struct {
+	ID                      string      `json:"id"`
+	Currency                string      `json:"currency"`
+	PeriodStartDate         string      `json:"periodStartDate"`
+	PeriodEndDate           string      `json:"periodEndDate"`
+	PeriodGain              json.Number `json:"periodGain"`
+	PeriodReturn            json.Number `json:"periodReturn"`
+	SimpleReturn            json.Number `json:"simpleReturn"`
+	AnnualizedSimpleReturn  json.Number `json:"annualizedSimpleReturn"`
+	CumulativeTWR           json.Number `json:"cumulativeTwr"`
+	AnnualizedTWR           json.Number `json:"annualizedTwr"`
+	CumulativeModifiedDietz json.Number `json:"cumulativeModifiedDietz"`
+	AnnualizedModifiedDietz json.Number `json:"annualizedModifiedDietz"`
+	Volatility              json.Number `json:"volatility"`
+	MaxDrawdown             json.Number `json:"maxDrawdown"`
+	IsHoldingsMode          bool        `json:"isHoldingsMode"`
+	ReturnMethod            string      `json:"returnMethod"`
+	IsMixedTrackingMode     bool        `json:"isMixedTrackingMode"`
+	Warnings                []string    `json:"warnings"`
+}
+
 // QuoteRecord represents a single historical price quote.
 type QuoteRecord struct {
 	ID        string      `json:"id"`

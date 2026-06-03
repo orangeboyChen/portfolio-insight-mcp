@@ -47,6 +47,9 @@ Currently exposed tools:
 | `get_portfolio_overview` | Portfolio snapshot: total market value, cost basis, gain/loss, day/week/month change |
 | `get_asset_allocation` | Allocation by asset class with market value, gain/loss, weight |
 | `get_holdings_detail` | Full per-holding details across all accounts |
+| `get_accounts` | List active accounts with name, type, currency, tracking mode, group |
+| `get_performance_summary` | Annualized return, volatility, max drawdown, TWR/Modified Dietz for a date range |
+| `get_recent_activities` | Recent transactions (trades, dividends, deposits, etc.) sorted by date |
 
 ## CI
 
