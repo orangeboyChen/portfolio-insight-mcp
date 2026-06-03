@@ -2,8 +2,8 @@ name: Release
 
 on:
   push:
-    tags:
-      - "v*.*.*"
+    branches:
+      - master
 
 permissions:
   contents: write
@@ -44,10 +44,47 @@ jobs:
       - name: Run tests
         run: go test ./... -race -coverprofile=coverage.out -covermode=atomic
 
+  bump-version:
+    name: Bump patch version
+    runs-on: ubuntu-latest
+    needs: [lint, test]
+    outputs:
+      new_tag: ${{ steps.bump.outputs.new_tag }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Get latest tag and bump patch
+        id: bump
+        run: |
+          # Get the highest semver tag
+          LATEST_TAG=$(git tag -l 'v*.*.*' | sort -V | tail -n 1)
+          if [ -z "$LATEST_TAG" ]; then
+            NEW_TAG="v0.1.0"
+          else
+            # Strip 'v' prefix, split by '.', bump patch
+            VERSION="${LATEST_TAG#v}"
+            MAJOR=$(echo "$VERSION" | cut -d. -f1)
+            MINOR=$(echo "$VERSION" | cut -d. -f2)
+            PATCH=$(echo "$VERSION" | cut -d. -f3)
+            NEW_PATCH=$((PATCH + 1))
+            NEW_TAG="v${MAJOR}.${MINOR}.${NEW_PATCH}"
+          fi
+          echo "new_tag=${NEW_TAG}" >> "$GITHUB_OUTPUT"
+          echo "Bumping version: ${LATEST_TAG:-none} -> ${NEW_TAG}"
+
+      - name: Create and push tag
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag "${{ steps.bump.outputs.new_tag }}"
+          git push origin "${{ steps.bump.outputs.new_tag }}"
+
   docker:
     name: Build and push Docker image
     runs-on: ubuntu-latest
-    needs: [lint, test]
+    needs: [bump-version]
     outputs:
       image: ${{ steps.meta.outputs.tags }}
       digest: ${{ steps.build.outputs.digest }}
@@ -73,9 +110,8 @@ jobs:
         with:
           images: ghcr.io/${{ github.repository }}
           tags: |
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-            type=semver,pattern={{major}}
+            type=raw,value=${{ needs.bump-version.outputs.new_tag }}
+            type=raw,value=latest
             type=sha
 
       - name: Build and push (linux/amd64, linux/arm64)
@@ -102,7 +138,7 @@ jobs:
   github-release:
     name: Publish GitHub Release
     runs-on: ubuntu-latest
-    needs: [docker]
+    needs: [bump-version, docker]
     steps:
       - uses: actions/checkout@v4
         with:
@@ -110,12 +146,13 @@ jobs:
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ needs.bump-version.outputs.new_tag }}
           generate_release_notes: true
           body: |
             ## Container image
 
             ```
-            docker pull ghcr.io/${{ github.repository }}:${{ github.ref_name }}
+            docker pull ghcr.io/${{ github.repository }}:${{ needs.bump-version.outputs.new_tag }}
             ```
 
             Supported platforms: `linux/amd64`, `linux/arm64`.
