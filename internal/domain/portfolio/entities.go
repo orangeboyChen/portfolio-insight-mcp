@@ -22,6 +22,7 @@ type MoneyAmount struct {
 
 // Instrument represents a financial instrument (stock, ETF, fund, etc.).
 type Instrument struct {
+	ID            string `json:"id"`
 	Symbol        string `json:"symbol"`
 	Name          string `json:"name"`
 	Currency      string `json:"currency"`

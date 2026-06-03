@@ -6,26 +6,12 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"strconv"
 	"strings"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/orangeboyChen/portfolio-insight-mcp/internal/application"
 )
-
-// parseIntParam parses a string parameter as int, returning defaultVal if empty or invalid.
-func parseIntParam(s string, defaultVal int) int {
-	s = strings.TrimSpace(s)
-	if s == "" {
-		return defaultVal
-	}
-	v, err := strconv.Atoi(s)
-	if err != nil {
-		return defaultVal
-	}
-	return v
-}
 
 // ServerConfig holds configuration for the MCP HTTP server.
 type ServerConfig struct {
@@ -242,12 +228,15 @@ func newHoldingsDetailHandler(svc *application.PortfolioService) func(ctx contex
 }
 
 type recentActivitiesInput struct {
-	Limit string `json:"limit,omitempty" jsonschema:"Maximum number of records to return (1-100). Defaults to 20 if omitted. Pass as a number string, e.g. \"20\"."`
+	Limit int `json:"limit,omitempty" jsonschema:"Maximum number of records to return (1-100). Defaults to 20 if omitted."`
 }
 
 func newRecentActivitiesHandler(svc *application.PortfolioService) func(ctx context.Context, req *mcp.CallToolRequest, input recentActivitiesInput) (*mcp.CallToolResult, any, error) {
 	return func(ctx context.Context, req *mcp.CallToolRequest, input recentActivitiesInput) (*mcp.CallToolResult, any, error) {
-		limit := parseIntParam(input.Limit, 20)
+		limit := input.Limit
+		if limit <= 0 {
+			limit = 20
+		}
 		result, err := svc.GetRecentActivities(ctx, limit)
 		if err != nil {
 			log.Printf("ERROR get_recent_activities: %v", err)
@@ -265,31 +254,16 @@ func newRecentActivitiesHandler(svc *application.PortfolioService) func(ctx cont
 }
 
 type quoteHistoryInput struct {
-	Symbols   string `json:"symbols" jsonschema:"Comma-separated ticker symbols, e.g. \"AAPL,MSFT,BTC\". Required."`
-	Days      string `json:"days,omitempty" jsonschema:"Number of days of history (e.g. 7, 30, 90, 365). Takes precedence over startDate/endDate. Defaults to 30 if nothing specified."`
-	StartDate string `json:"startDate,omitempty" jsonschema:"Start date in YYYY-MM-DD format. Used only if days is not provided."`
-	EndDate   string `json:"endDate,omitempty" jsonschema:"End date in YYYY-MM-DD format. Defaults to today if omitted."`
+	Symbols   []string `json:"symbols,omitempty" jsonschema:"Array of ticker symbols, e.g. [\"AAPL\", \"MSFT\", \"BTC\"]. If omitted, returns history for all current holdings."`
+	Days      int      `json:"days,omitempty" jsonschema:"Number of days of history (e.g. 7, 30, 90, 365). Takes precedence over startDate/endDate. Defaults to 30 if nothing specified."`
+	StartDate string   `json:"startDate,omitempty" jsonschema:"Start date in YYYY-MM-DD format. Used only if days is not provided."`
+	EndDate   string   `json:"endDate,omitempty" jsonschema:"End date in YYYY-MM-DD format. Defaults to today if omitted."`
 }
 
 func newQuoteHistoryHandler(svc *application.PortfolioService) func(ctx context.Context, req *mcp.CallToolRequest, input quoteHistoryInput) (*mcp.CallToolResult, any, error) {
 	return func(ctx context.Context, req *mcp.CallToolRequest, input quoteHistoryInput) (*mcp.CallToolResult, any, error) {
-		if strings.TrimSpace(input.Symbols) == "" {
-			return &mcp.CallToolResult{
-				Content: []mcp.Content{&mcp.TextContent{Text: "symbols parameter is required (comma-separated ticker symbols, e.g. \"AAPL,MSFT,BTC\")"}},
-				IsError: true,
-			}, nil, nil
-		}
-
-		// Parse comma-separated symbols
-		var symbols []string
-		for _, s := range strings.Split(input.Symbols, ",") {
-			s = strings.TrimSpace(s)
-			if s != "" {
-				symbols = append(symbols, s)
-			}
-		}
-
-		days := parseIntParam(input.Days, 0)
+		symbols := input.Symbols
+		days := input.Days
 		result, err := svc.GetQuoteHistory(ctx, symbols, days, input.StartDate, input.EndDate)
 		if err != nil {
 			log.Printf("ERROR get_quote_history: %v", err)

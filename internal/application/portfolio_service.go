@@ -476,14 +476,21 @@ func (s *PortfolioService) GetHoldingsDetail(ctx context.Context) ([]portfolio.H
 	}
 
 	type holdingInfo struct {
-		id    string
-		price float64
+		assetID   string // instrument.id (UUID) for quote API
+		holdingID string // holding.id for mapping back results
+		price     float64
 	}
-	uniqueAssets := make(map[string]*holdingInfo)
+	uniqueAssets := make(map[string]*holdingInfo) // keyed by instrument.id
+	holdingToAsset := make(map[string]string)     // holding.id -> instrument.id
 	for _, h := range holdings {
-		if _, exists := uniqueAssets[h.ID]; !exists {
+		aid := h.Instrument.ID
+		if aid == "" {
+			aid = h.ID // fallback
+		}
+		holdingToAsset[h.ID] = aid
+		if _, exists := uniqueAssets[aid]; !exists {
 			price, _ := strconv.ParseFloat(h.Price.String(), 64)
-			uniqueAssets[h.ID] = &holdingInfo{id: h.ID, price: price}
+			uniqueAssets[aid] = &holdingInfo{assetID: aid, holdingID: h.ID, price: price}
 		}
 	}
 
@@ -591,7 +598,8 @@ func (s *PortfolioService) GetHoldingsDetail(ctx context.Context) ([]portfolio.H
 			Weight:       h.Weight.String(),
 			AsOfDate:     h.AsOfDate,
 		}
-		if sc, ok := changeMap[h.ID]; ok {
+		aid := holdingToAsset[h.ID]
+		if sc, ok := changeMap[aid]; ok {
 			d.WeekChangePct = sc.weekChangePct
 			d.MonthChangePct = sc.monthChangePct
 		}
@@ -620,36 +628,82 @@ func (s *PortfolioService) GetQuoteHistory(ctx context.Context, symbols []string
 		}
 	}
 
-	// Build symbol -> currency map from holdings to provide price unit context.
+	// Build mappings from holdings:
+	// - symbol -> asset_id (instrument.id): for resolving LLM-provided symbols to Wealthfolio internal IDs
+	// - asset_id -> currency: for annotating quote results with currency
+	// - asset_id -> symbol: for showing human-readable symbol in results
 	holdings, _ := s.repo.GetAllHoldings(ctx)
-	currencyMap := make(map[string]string)
+	symbolToAssetID := make(map[string]string)   // e.g. "AAPL" -> "uuid..."
+	assetIDToCurrency := make(map[string]string) // e.g. "uuid..." -> "USD"
+	assetIDToSymbol := make(map[string]string)   // e.g. "uuid..." -> "AAPL"
 	for _, h := range holdings {
-		if h.Instrument.Symbol != "" && h.Instrument.Currency != "" {
-			currencyMap[h.Instrument.Symbol] = h.Instrument.Currency
-		}
-		// Also map by holding ID (assetId used in quote history)
-		if h.ID != "" && h.Instrument.Currency != "" {
-			currencyMap[h.ID] = h.Instrument.Currency
+		if h.Instrument.ID != "" {
+			if h.Instrument.Symbol != "" {
+				symbolToAssetID[h.Instrument.Symbol] = h.Instrument.ID
+				assetIDToSymbol[h.Instrument.ID] = h.Instrument.Symbol
+			}
+			if h.Instrument.Currency != "" {
+				assetIDToCurrency[h.Instrument.ID] = h.Instrument.Currency
+			}
 		}
 	}
 
-	results := make([]portfolio.QuoteHistoryResult, 0, len(symbols))
+	// Resolve symbols to asset IDs for the quote API.
+	// If no symbols specified, use all unique asset IDs from holdings.
+	type queryItem struct {
+		assetID  string
+		symbol   string
+		currency string
+	}
+	var queries []queryItem
+
+	if len(symbols) == 0 {
+		seen := make(map[string]bool)
+		for _, h := range holdings {
+			aid := h.Instrument.ID
+			if aid != "" && !seen[aid] {
+				seen[aid] = true
+				queries = append(queries, queryItem{
+					assetID:  aid,
+					symbol:   h.Instrument.Symbol,
+					currency: assetIDToCurrency[aid],
+				})
+			}
+		}
+	} else {
+		for _, sym := range symbols {
+			aid, ok := symbolToAssetID[sym]
+			if !ok {
+				// If not found in mapping, try using it directly as asset_id
+				aid = sym
+			}
+			displaySymbol := sym
+			if s, ok := assetIDToSymbol[aid]; ok {
+				displaySymbol = s
+			}
+			queries = append(queries, queryItem{
+				assetID:  aid,
+				symbol:   displaySymbol,
+				currency: assetIDToCurrency[aid],
+			})
+		}
+	}
+
+	results := make([]portfolio.QuoteHistoryResult, 0, len(queries))
 	var mu sync.Mutex
 	var wg sync.WaitGroup
 
-	for _, sym := range symbols {
+	for _, q := range queries {
 		wg.Add(1)
-		go func(symbol string) {
+		go func(item queryItem) {
 			defer wg.Done()
 
-			currency := currencyMap[symbol]
-
-			quotes, err := s.repo.GetQuoteHistory(ctx, symbol)
+			quotes, err := s.repo.GetQuoteHistory(ctx, item.assetID)
 			if err != nil || len(quotes) == 0 {
 				mu.Lock()
 				results = append(results, portfolio.QuoteHistoryResult{
-					Symbol:    symbol,
-					Currency:  currency,
+					Symbol:    item.symbol,
+					Currency:  item.currency,
 					Quotes:    nil,
 					StartDate: startDate,
 					EndDate:   endDate,
@@ -660,30 +714,30 @@ func (s *PortfolioService) GetQuoteHistory(ctx context.Context, symbols []string
 
 			// Filter quotes within [startDate, endDate]
 			filtered := make([]portfolio.QuoteRecord, 0)
-			for _, q := range quotes {
-				t, err := time.Parse(time.RFC3339, q.Timestamp)
+			for _, qr := range quotes {
+				t, err := time.Parse(time.RFC3339, qr.Timestamp)
 				if err != nil {
-					t, err = time.Parse("2006-01-02T15:04:05Z", q.Timestamp)
+					t, err = time.Parse("2006-01-02T15:04:05Z", qr.Timestamp)
 					if err != nil {
 						continue
 					}
 				}
 				dateStr := t.Format("2006-01-02")
 				if dateStr >= startDate && dateStr <= endDate {
-					filtered = append(filtered, q)
+					filtered = append(filtered, qr)
 				}
 			}
 
 			mu.Lock()
 			results = append(results, portfolio.QuoteHistoryResult{
-				Symbol:    symbol,
-				Currency:  currency,
+				Symbol:    item.symbol,
+				Currency:  item.currency,
 				Quotes:    filtered,
 				StartDate: startDate,
 				EndDate:   endDate,
 			})
 			mu.Unlock()
-		}(sym)
+		}(q)
 	}
 	wg.Wait()
 
