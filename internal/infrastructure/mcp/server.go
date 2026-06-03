@@ -34,47 +34,47 @@ func NewServer(svc *application.PortfolioService) *Server {
 	// Register tools
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "refresh_portfolio",
-		Description: "Trigger a portfolio data refresh: syncs latest market quotes and recalculates portfolio snapshots. MUST be called before querying holdings/overview if market data may be stale (e.g., at the start of a new session or after market close). Returns when the update is complete or after a timeout (max 60s). The operation is idempotent and safe to call multiple times.",
+		Description: "Trigger a portfolio data refresh: syncs latest market quotes and recalculates portfolio snapshots. MUST be called before querying holdings/overview if market data may be stale (e.g., at the start of a new session or after market close). Returns when the update is complete or after a timeout (max 60s). The operation is idempotent and safe to call multiple times.\n\nParameters: none.",
 	}, newRefreshPortfolioHandler(svc))
 
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "get_daily_gain_loss",
-		Description: "Get yesterday's (most recent trading day) portfolio gain/loss summary across all active accounts. Returns total daily P&L as dual-currency (local + base) amounts, base currency, and per-account breakdown including day gain/loss amount, percentage, and FX rate to base. Values are converted to base currency before summing; use totalDayGainLoss.base for portfolio-level totals.",
+		Description: "Get yesterday's (most recent trading day) portfolio gain/loss summary across all active accounts. Returns total daily P&L as dual-currency (local + base) amounts, base currency, and per-account breakdown including day gain/loss amount, percentage, and FX rate to base. Values are converted to base currency before summing; use totalDayGainLoss.base for portfolio-level totals.\n\nParameters: none.",
 	}, newDailyGainLossHandler(svc))
 
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "get_portfolio_overview",
-		Description: "Get a high-level portfolio snapshot: total market value, total cost basis, total unrealized gain/loss (amount and percentage), day change, week change (7-day gain and return %), month change (30-day gain and return %), number of holdings, and base currency. All monetary amounts are dual-currency objects with local and base values; use .base.amount for portfolio-level totals in the user's base currency. Only active accounts are included.",
+		Description: "Get a high-level portfolio snapshot: total market value, total cost basis, total unrealized gain/loss (amount and percentage), day change, week change (7-day gain and return %), month change (30-day gain and return %), number of holdings, and base currency. All monetary amounts are dual-currency objects with local and base values; use .base.amount for portfolio-level totals in the user's base currency. Only active accounts are included.\n\nParameters: none.",
 	}, newPortfolioOverviewHandler(svc))
 
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "get_asset_allocation",
-		Description: "Get portfolio allocation breakdown by asset class (e.g., Equity, Fixed Income, Cash, Crypto). Each class includes: market value, cost basis, gain/loss as dual-currency objects (local + base), gain/loss percentage, weight percentage, and number of holdings. Use .base.amount for cross-currency comparisons. Only active accounts are included.",
+		Description: "Get portfolio allocation breakdown by asset class (e.g., Equity, Fixed Income, Cash, Crypto). Each class includes: market value, cost basis, gain/loss as dual-currency objects (local + base), gain/loss percentage, weight percentage, and number of holdings. Use .base.amount for cross-currency comparisons. Only active accounts are included.\n\nParameters: none.",
 	}, newAssetAllocationHandler(svc))
 
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "get_holdings_detail",
-		Description: "Get detailed position information for every holding across all active accounts. Each holding includes: account name, security symbol, security name, asset class, localCurrency, baseCurrency, quantity, current price, market value / cost basis / day change / total gain as dual-currency objects (local + base), day change %, 7-day price change %, 30-day price change %, portfolio weight, and data date. Use .local for per-asset display and .base for portfolio-level aggregation.",
+		Description: "Get detailed position information for every holding across all active accounts. Each holding includes: account name, security symbol, security name, asset class, localCurrency, baseCurrency, quantity, current price, market value / cost basis / day change / total gain as dual-currency objects (local + base), day change %, 7-day price change %, 30-day price change %, portfolio weight, and data date. Use .local for per-asset display and .base for portfolio-level aggregation.\n\nParameters: none.",
 	}, newHoldingsDetailHandler(svc))
 
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "get_performance_summary",
-		Description: "Get detailed portfolio performance analytics for a date range. Returns: period gain (with currency), period return %, annualized return %, cumulative/annualized TWR and Modified Dietz (when available), volatility, max drawdown, return method used, and any warnings. Defaults to 1-year lookback if no dates specified. Use for periodic (weekly/monthly) portfolio health reports.",
+		Description: "Get detailed portfolio performance analytics for a date range. Returns: period gain (with currency), period return %, annualized return %, cumulative/annualized TWR and Modified Dietz (when available), volatility, max drawdown, return method used, and any warnings. Defaults to 1-year lookback if no dates specified. Use for periodic (weekly/monthly) portfolio health reports.\n\nParameters:\n- startDate (string, optional): Start date in YYYY-MM-DD format. Defaults to 1 year ago if omitted.\n- endDate (string, optional): End date in YYYY-MM-DD format. Defaults to today if omitted.",
 	}, newPerformanceSummaryHandler(svc))
 
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "get_accounts",
-		Description: "List all active investment accounts. Each account includes: name, account type (SECURITIES, RETIREMENT, etc.), currency, tracking mode, and optional group label. Useful for understanding the portfolio structure and grouping holdings by account in reports.",
+		Description: "List all active investment accounts. Each account includes: name, account type (SECURITIES, RETIREMENT, etc.), currency, tracking mode, and optional group label. Useful for understanding the portfolio structure and grouping holdings by account in reports.\n\nParameters: none.",
 	}, newAccountsHandler(svc))
 
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "get_recent_activities",
-		Description: "Get recent investment activities (trades, dividends, deposits, withdrawals, etc.) sorted by date descending. Returns up to `limit` records (default 20, max 100). Each activity includes: account name, date, type (BUY/SELL/DIVIDEND/DEPOSIT/WITHDRAWAL/etc.), security symbol, security name, quantity, unit price, total amount, fee, and currency. Useful for reviewing recent transactions and assessing whether trading decisions are reasonable.",
+		Description: "Get recent investment activities (trades, dividends, deposits, withdrawals, etc.) sorted by date descending. Each activity includes: account name, date, type (BUY/SELL/DIVIDEND/DEPOSIT/WITHDRAWAL/etc.), security symbol, security name, quantity, unit price, total amount, fee, and currency. Useful for reviewing recent transactions and assessing whether trading decisions are reasonable.\n\nParameters:\n- limit (integer, optional): Maximum number of records to return. Range: 1-100. Defaults to 20 if omitted.",
 	}, newRecentActivitiesHandler(svc))
 
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "get_quote_history",
-		Description: "Get historical price data for one or more holdings over a specified time range. Useful for trend analysis, charting, technical analysis, and comparing price movements across multiple securities. Each result includes: symbol, currency (the denomination of the price, e.g. USD/HKD/EUR — important for cross-currency comparison), and an array of quote records (date, close price, adjusted close price). Supports flexible time ranges via `days` parameter (e.g., 7, 30, 90, 180, 365) or custom `startDate`/`endDate` (YYYY-MM-DD format). If `days` is provided it takes precedence over date range. Defaults to 30 days if nothing specified. Pass `symbols` as an array of ticker symbols (e.g., [\"AAPL\", \"MSFT\"]). Returns results grouped by symbol. Note: prices are in the asset's native trading currency (see `currency` field); convert to base currency if comparing across different markets.",
+		Description: "Get historical price data for one or more holdings over a specified time range. Useful for trend analysis, charting, technical analysis, and comparing price movements across multiple securities. Each result includes: symbol, currency (the denomination of the price, e.g. USD/HKD/EUR), and an array of quote records (date, close price, adjusted close price). Returns results grouped by symbol. Prices are in the asset's native trading currency (see `currency` field).\n\nParameters:\n- symbols (array of strings, REQUIRED): Ticker symbols to query, e.g. [\"AAPL\", \"MSFT\", \"BTC\"]. Must be a JSON array.\n- days (integer, optional): Number of days of history to retrieve (e.g. 7, 30, 90, 180, 365). If provided, takes precedence over startDate/endDate. Defaults to 30 if neither days nor date range is specified.\n- startDate (string, optional): Start date in YYYY-MM-DD format. Used only if `days` is not provided.\n- endDate (string, optional): End date in YYYY-MM-DD format. Defaults to today if omitted.",
 	}, newQuoteHistoryHandler(svc))
 
 	return &Server{mcpServer: server}
@@ -228,7 +228,7 @@ func newHoldingsDetailHandler(svc *application.PortfolioService) func(ctx contex
 }
 
 type recentActivitiesInput struct {
-	Limit int `json:"limit"`
+	Limit int `json:"limit,omitempty" jsonschema:"Maximum number of records to return (1-100). Defaults to 20 if omitted."`
 }
 
 func newRecentActivitiesHandler(svc *application.PortfolioService) func(ctx context.Context, req *mcp.CallToolRequest, input recentActivitiesInput) (*mcp.CallToolResult, any, error) {
@@ -250,10 +250,10 @@ func newRecentActivitiesHandler(svc *application.PortfolioService) func(ctx cont
 }
 
 type quoteHistoryInput struct {
-	Symbols   []string `json:"symbols"`
-	Days      int      `json:"days"`
-	StartDate string   `json:"startDate"`
-	EndDate   string   `json:"endDate"`
+	Symbols   []string `json:"symbols" jsonschema:"Array of ticker symbols to query, e.g. [\"AAPL\", \"MSFT\", \"BTC\"]. Must be a JSON array, not a string."`
+	Days      int      `json:"days,omitempty" jsonschema:"Number of days of history (e.g. 7, 30, 90, 365). Takes precedence over startDate/endDate. Defaults to 30 if nothing specified."`
+	StartDate string   `json:"startDate,omitempty" jsonschema:"Start date in YYYY-MM-DD format. Used only if days is not provided."`
+	EndDate   string   `json:"endDate,omitempty" jsonschema:"End date in YYYY-MM-DD format. Defaults to today if omitted."`
 }
 
 func newQuoteHistoryHandler(svc *application.PortfolioService) func(ctx context.Context, req *mcp.CallToolRequest, input quoteHistoryInput) (*mcp.CallToolResult, any, error) {
@@ -282,8 +282,8 @@ func newQuoteHistoryHandler(svc *application.PortfolioService) func(ctx context.
 }
 
 type performanceSummaryInput struct {
-	StartDate string `json:"startDate"`
-	EndDate   string `json:"endDate"`
+	StartDate string `json:"startDate,omitempty" jsonschema:"Start date in YYYY-MM-DD format. Defaults to 1 year ago if omitted."`
+	EndDate   string `json:"endDate,omitempty" jsonschema:"End date in YYYY-MM-DD format. Defaults to today if omitted."`
 }
 
 func newPerformanceSummaryHandler(svc *application.PortfolioService) func(ctx context.Context, req *mcp.CallToolRequest, input performanceSummaryInput) (*mcp.CallToolResult, any, error) {
