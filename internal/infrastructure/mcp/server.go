@@ -72,6 +72,11 @@ func NewServer(svc *application.PortfolioService) *Server {
 		Description: "Get recent investment activities (trades, dividends, deposits, withdrawals, etc.) sorted by date descending. Returns up to `limit` records (default 20, max 100). Each activity includes: account name, date, type (BUY/SELL/DIVIDEND/DEPOSIT/WITHDRAWAL/etc.), security symbol, security name, quantity, unit price, total amount, fee, and currency. Useful for reviewing recent transactions and assessing whether trading decisions are reasonable.",
 	}, newRecentActivitiesHandler(svc))
 
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "get_quote_history",
+		Description: "Get historical price data for one or more holdings over a specified time range. Useful for trend analysis, charting, technical analysis, and comparing price movements across multiple securities. Each result includes: symbol, currency (the denomination of the price, e.g. USD/HKD/EUR — important for cross-currency comparison), and an array of quote records (date, close price, adjusted close price). Supports flexible time ranges via `days` parameter (e.g., 7, 30, 90, 180, 365) or custom `startDate`/`endDate` (YYYY-MM-DD format). If `days` is provided it takes precedence over date range. Defaults to 30 days if nothing specified. Pass `symbols` as an array of ticker symbols (e.g., [\"AAPL\", \"MSFT\"]). Returns results grouped by symbol. Note: prices are in the asset's native trading currency (see `currency` field); convert to base currency if comparing across different markets.",
+	}, newQuoteHistoryHandler(svc))
+
 	return &Server{mcpServer: server}
 }
 
@@ -231,6 +236,38 @@ func newRecentActivitiesHandler(svc *application.PortfolioService) func(ctx cont
 			log.Printf("ERROR get_recent_activities: %v", err)
 			return &mcp.CallToolResult{
 				Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("failed to get recent activities: %v", err)}},
+				IsError: true,
+			}, nil, nil
+		}
+
+		data, _ := json.MarshalIndent(result, "", "  ")
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.TextContent{Text: string(data)}},
+		}, nil, nil
+	}
+}
+
+type quoteHistoryInput struct {
+	Symbols   []string `json:"symbols"`
+	Days      int      `json:"days"`
+	StartDate string   `json:"startDate"`
+	EndDate   string   `json:"endDate"`
+}
+
+func newQuoteHistoryHandler(svc *application.PortfolioService) func(ctx context.Context, req *mcp.CallToolRequest, input quoteHistoryInput) (*mcp.CallToolResult, any, error) {
+	return func(ctx context.Context, req *mcp.CallToolRequest, input quoteHistoryInput) (*mcp.CallToolResult, any, error) {
+		if len(input.Symbols) == 0 {
+			return &mcp.CallToolResult{
+				Content: []mcp.Content{&mcp.TextContent{Text: "symbols parameter is required (array of ticker symbols)"}},
+				IsError: true,
+			}, nil, nil
+		}
+
+		result, err := svc.GetQuoteHistory(ctx, input.Symbols, input.Days, input.StartDate, input.EndDate)
+		if err != nil {
+			log.Printf("ERROR get_quote_history: %v", err)
+			return &mcp.CallToolResult{
+				Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("failed to get quote history: %v", err)}},
 				IsError: true,
 			}, nil, nil
 		}

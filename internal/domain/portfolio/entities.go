@@ -162,6 +162,15 @@ type ActivitySearchResult struct {
 	TotalCount int        `json:"totalCount"`
 }
 
+// QuoteHistoryResult holds historical price quotes for one or more symbols within a date range.
+type QuoteHistoryResult struct {
+	Symbol    string        `json:"symbol"`
+	Currency  string        `json:"currency"`
+	Quotes    []QuoteRecord `json:"quotes"`
+	StartDate string        `json:"startDate"`
+	EndDate   string        `json:"endDate"`
+}
+
 // HoldingDetail is an enriched holding record exposed via MCP,
 // designed to provide sufficient context for downstream agents.
 type HoldingDetail struct {

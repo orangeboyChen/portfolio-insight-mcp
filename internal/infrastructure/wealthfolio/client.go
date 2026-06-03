@@ -253,6 +253,26 @@ func (c *Client) GetQuoteHistory(ctx context.Context, symbol string) ([]portfoli
 	return quotes, nil
 }
 
+// connectEventStream opens an SSE connection to the Wealthfolio event stream.
+// The caller is responsible for closing the response body.
+func (c *Client) connectEventStream(ctx context.Context) (*http.Response, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+"/api/v1/events/stream", nil)
+	if err != nil {
+		return nil, fmt.Errorf("create SSE request: %w", err)
+	}
+	req.Header.Set("Accept", "text/event-stream")
+	if c.token != "" {
+		req.Header.Set("Authorization", "Bearer "+c.token)
+		req.AddCookie(&http.Cookie{Name: "wf_session", Value: c.token})
+	}
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("connect to event stream: %w", err)
+	}
+	return resp, nil
+}
+
 // RefreshPortfolio triggers a portfolio update (incremental market sync + recalculation).
 // The Wealthfolio API returns 202 Accepted and processes asynchronously.
 // We subscribe to the SSE event stream to wait for completion or error.
@@ -265,24 +285,29 @@ func (c *Client) RefreshPortfolio(ctx context.Context) error {
 	sseCtx, sseCancel := context.WithTimeout(ctx, 90*time.Second)
 	defer sseCancel()
 
-	sseReq, err := http.NewRequestWithContext(sseCtx, http.MethodGet, c.baseURL+"/api/v1/events/stream", nil)
+	sseResp, err := c.connectEventStream(sseCtx)
 	if err != nil {
-		return fmt.Errorf("create SSE request: %w", err)
-	}
-	sseReq.Header.Set("Accept", "text/event-stream")
-	if c.token != "" {
-		sseReq.Header.Set("Authorization", "Bearer "+c.token)
+		return err
 	}
 
-	sseResp, err := c.httpClient.Do(sseReq)
-	if err != nil {
-		return fmt.Errorf("connect to event stream: %w", err)
+	// Retry once on 401: re-authenticate and reconnect.
+	if sseResp.StatusCode == http.StatusUnauthorized {
+		_ = sseResp.Body.Close()
+		c.token = ""
+		if err := c.authenticate(ctx); err != nil {
+			return fmt.Errorf("re-authenticate for event stream: %w", err)
+		}
+		sseResp, err = c.connectEventStream(sseCtx)
+		if err != nil {
+			return err
+		}
 	}
+
 	defer func() { _ = sseResp.Body.Close() }()
 
 	if sseResp.StatusCode != http.StatusOK {
-		_ = sseResp.Body.Close()
-		return fmt.Errorf("event stream returned status %d", sseResp.StatusCode)
+		body, _ := io.ReadAll(sseResp.Body)
+		return fmt.Errorf("event stream returned status %d: %s", sseResp.StatusCode, string(body))
 	}
 
 	// Now trigger the portfolio update with an empty JSON body.

@@ -601,6 +601,95 @@ func (s *PortfolioService) GetHoldingsDetail(ctx context.Context) ([]portfolio.H
 	return details, nil
 }
 
+// GetQuoteHistory returns historical price data for the given symbols within a date range.
+// If days > 0, it takes precedence and calculates startDate as (now - days).
+// If days == 0, startDate/endDate are used directly. Defaults to 30 days if all empty.
+// Each result includes the currency in which the quotes are denominated (derived from holdings data).
+func (s *PortfolioService) GetQuoteHistory(ctx context.Context, symbols []string, days int, startDate, endDate string) ([]portfolio.QuoteHistoryResult, error) {
+	now := time.Now()
+
+	if days > 0 {
+		startDate = now.AddDate(0, 0, -days).Format("2006-01-02")
+		endDate = now.Format("2006-01-02")
+	} else {
+		if endDate == "" {
+			endDate = now.Format("2006-01-02")
+		}
+		if startDate == "" {
+			startDate = now.AddDate(0, 0, -30).Format("2006-01-02")
+		}
+	}
+
+	// Build symbol -> currency map from holdings to provide price unit context.
+	holdings, _ := s.repo.GetAllHoldings(ctx)
+	currencyMap := make(map[string]string)
+	for _, h := range holdings {
+		if h.Instrument.Symbol != "" && h.Instrument.Currency != "" {
+			currencyMap[h.Instrument.Symbol] = h.Instrument.Currency
+		}
+		// Also map by holding ID (assetId used in quote history)
+		if h.ID != "" && h.Instrument.Currency != "" {
+			currencyMap[h.ID] = h.Instrument.Currency
+		}
+	}
+
+	results := make([]portfolio.QuoteHistoryResult, 0, len(symbols))
+	var mu sync.Mutex
+	var wg sync.WaitGroup
+
+	for _, sym := range symbols {
+		wg.Add(1)
+		go func(symbol string) {
+			defer wg.Done()
+
+			currency := currencyMap[symbol]
+
+			quotes, err := s.repo.GetQuoteHistory(ctx, symbol)
+			if err != nil || len(quotes) == 0 {
+				mu.Lock()
+				results = append(results, portfolio.QuoteHistoryResult{
+					Symbol:    symbol,
+					Currency:  currency,
+					Quotes:    nil,
+					StartDate: startDate,
+					EndDate:   endDate,
+				})
+				mu.Unlock()
+				return
+			}
+
+			// Filter quotes within [startDate, endDate]
+			filtered := make([]portfolio.QuoteRecord, 0)
+			for _, q := range quotes {
+				t, err := time.Parse(time.RFC3339, q.Timestamp)
+				if err != nil {
+					t, err = time.Parse("2006-01-02T15:04:05Z", q.Timestamp)
+					if err != nil {
+						continue
+					}
+				}
+				dateStr := t.Format("2006-01-02")
+				if dateStr >= startDate && dateStr <= endDate {
+					filtered = append(filtered, q)
+				}
+			}
+
+			mu.Lock()
+			results = append(results, portfolio.QuoteHistoryResult{
+				Symbol:    symbol,
+				Currency:  currency,
+				Quotes:    filtered,
+				StartDate: startDate,
+				EndDate:   endDate,
+			})
+			mu.Unlock()
+		}(sym)
+	}
+	wg.Wait()
+
+	return results, nil
+}
+
 // AccountInfo is a safe-to-expose account record for MCP consumers.
 type AccountInfo struct {
 	Name         string `json:"name"`
